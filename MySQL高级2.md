@@ -1408,7 +1408,7 @@ EXPLAIN SELECT SQL_NO_CACHE * FROM student WHERE student.age=30 AND student.name
 
 
 
-**1.Simple Nested-Loop Join**
+**1.`Simple Nested-Loop Join`**
 
 ![](E:\阶段性资料\笔记\pic\QQ截图20221003211249.png)
 
@@ -1421,6 +1421,301 @@ EXPLAIN SELECT SQL_NO_CACHE * FROM student WHERE student.age=30 AND student.name
 | **读取记录数**       | `A + (B * A)` |
 | **JOIN比较次数**     | `B * A`       |
 | **回表读取记录次数** | `0`           |
+
+
+
+**2.`Index Nested-Loop Join`（索引嵌套循环连接）**
+
+> ​	**Index Nested-Loop Join优化思路是为了`减少内层表数据的匹配次数`，所以要求`被驱动表`上必须有==索引==才行，通过外层表匹配条件直接与内层表索引进行匹配，避免和内存表的每条数据进行比较**
+
+
+
+![](E:\阶段性资料\笔记\pic\QQ截图20221004155414.png)
+
+
+
+| **开销统计**         | SNLJ          | INLJ                     |
+| -------------------- | ------------- | ------------------------ |
+| **外表扫描次数**     | `1`           | `1`                      |
+| **内表扫描次数**     | `A`           | `0`                      |
+| **读取记录数**       | `A + (B * A)` | `A + B (maych)`          |
+| **JOIN比较次数**     | `B * A`       | `A * Index (Height)`     |
+| **回表读取记录次数** | `0`           | `B (match)(if possible)` |
+
+
+
+**3.`Block Nested-Loop Join`(块嵌套循环连接)**
+
+> ​	**不再逐条回去驱动表的数据，而是一块一块的获取，引入到`join buffer 缓冲区`，将驱动表join相关的部分数据缓存到join buffer中，然后全表扫描被驱动表，被驱动表的每一条记录一次性和join buffer中的所有驱动表记录进行匹配，将简单的嵌套循环中的多次比较合并成一次，降低了被驱动表的访问频率**
+
+
+
+![](E:\阶段性资料\笔记\pic\QQ截图20221004162521.png)
+
+
+
+| **开销统计**         | SNLJ          | INLJ                     | BNLJ                                           |
+| -------------------- | ------------- | ------------------------ | ---------------------------------------------- |
+| **外表扫描次数**     | `1`           | `1`                      | `1`                                            |
+| **内表扫描次数**     | `A`           | `0`                      | `A * used_column_size/join_buffer_siaze + 1`   |
+| **读取记录数**       | `A + (B * A)` | `A + B (maych)`          | `A + B * (used_column_size/join_buffer_siaze)` |
+| **JOIN比较次数**     | `B * A`       | `A * Index (Height)`     | `B * A`                                        |
+| **回表读取记录次数** | `0`           | `B (match)(if possible)` | `0`                                            |
+
+
+
+**参数设置：**
+
+- **blick_nested_loop**
+
+> ​	**`show variables like '%optimizer_switch%'`查看`block_nested_loop`状态**
+
+
+
+- **join_buffer_size**
+
+> ​	**驱动表能否一次性加载完，就要看join buffer能不能存储所有的数据，默认情况下`join_buffer_size=256k`,最大可申请4个G**
+>
+> ```sql
+> show VARIABLES like '%join_buffer%'
+> ```
+
+
+
+**小结：**
+
+> **1.整体效率：INLJ > BNLJ > SNLJ**
+>
+> **2.永远用小结果集驱动大结果集（本质上是减少外层循环的数据数量）**
+>
+> **3.保证被驱动表的JOIN字段已经创建了索引**
+>
+> **4.需要JOIN 的字段，数据类型保持绝对一致**
+>
+> **5.INNER JOIN 时，`MySQL会自动将小结果集的表选为驱动表`**
+>
+> **6.适当增大`join buffer size`的大小**
+>
+> **7.减少驱动表不必要的查询字段（字段越少，join buffer所缓存的数据就越少）**
+
+
+
+### 5.2.2 Hash Join（新特性）
+
+> ​	**`从MySQL8.0.20版本开始废弃BNLJ，使用Hash Join进行替代`**
+
+- **`Nested Loop:`对于数据量较小的情况是一个较好的选择**
+- **`Hash Join:`针对于`大数据集连接`时的常用方式，优化器使用两个表中较小的表利用`Join Key`在内存中建立`散列表`，然后扫描较大的表并探测散列表，找到与`Hash`表匹配的行**
+  		- **较小的表可以直接放入内存当中，总成本就是访问两个表的成本之和**
+  		- **当表很大的时候，优化器会将其分割成`若干个不同的分区`，不能放入内存的部分就改吧分区写入磁盘的临时段，此时要求有较大的临时段从而提高I/O性能**
+  		- **`它能够很好的用于没有索引的大表并行查询的环境中，并提供最好的性能`,==Hash Join只能用于等值连接==**
+
+| **类别**     | Nested Loop                                                  | Hash Join                                                    |
+| :----------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| **使用条件** | **任何条件**                                                 | **等值连接**                                                 |
+| **相关资源** | **CPU、磁盘I/O**                                             | **内存、临时空间**                                           |
+| **特点**     | **当有高选择性索引或进行限制性搜索时，能够快速返回第一次的搜索结果** | **当缺乏索引或者索引条件模糊时，Hash Join 比 Nested Loop 更加有效，如果表的数据量很大，效率则相对更高** |
+| **缺点**     | **当索引丢失或者查询条件限制不够时，效率很低，表的记录多时效率也很低** | **建立哈希表需要大量内存，第一次返回结果时间很长**           |
+
+
+
+## 5.3 子查询优化
+
+> ​	**子查询是 MySQL 的一项重要的功能，可以帮助我们通过一个 SQL 语句实现比较复杂的查询。但是，子查询的执行效率不高**
+>
+> - **执行子查询时，MySQL需要为内层查询语句的查询结果 建立一个临时表 ，然后外层查询语句从临时表中查询记录。查询完毕后，再 撤销这些临时表 。这样会消耗过多的CPU和IO资源，产生大量的慢查询**
+>
+> - **子查询的结果集存储的临时表，不论是内存临时表还是磁盘临时表都 不会存在索引 ，所以查询性能会受到一定的影响**
+>
+> - **对于返回结果集比较大的子查询，其对查询性能的影响也就越大**
+>
+> **结论：`尽量不要使用NOT IN 或者 NOT EXISTS，用LEFT JOIN xxx ON xx WHERE xx IS NULL替代`**
+
+
+
+## 5.4 排序优化
+
+> **在MySQL中，支持两种排序方式，分别是`FileSort`和`Index`排序**
+>
+> - **Index排序中，索引可以保证数据的有序性，不需要再进行排序，`效率很高`**
+> - **FileSort排序一般再`内存中`进行，占用`CPU较多`，如果文件过大，会产生临时文件I/O到磁盘中进行排序，效率较低**
+
+
+
+**`优化建议：`**
+
+> 1. **SQL 中，可以在 WHERE 子句和 ORDER BY 子句中使用索引，目的是在 WHERE 子句中 避免全表扫 描 ，在 ORDER BY 子句 避免使用 FileSort 排序 。当然，某些情况下全表扫描，或者 FileSort 排序不一定比索引慢。但总的来说，我们还是要避免，以提高查询效率。**
+> 2. **`尽量使用 Index 完成 ORDER BY 排序。如果 WHERE 和 ORDER BY 后面是相同的列就使用单索引列；如果不同就使用联合索引`。**
+> 3. **无法使用 Index 时，需要对 FileSort 方式进行调优。**
+
+
+
+### 5.4.1 order by 未使用limit条件，索引失效
+
+```sql
+# order by 时不使用 limit 索引失效
+CREATE INDEX IDX_AGE_CLASSID_NAME ON STUDENT (AGE,CLASSID,NAME)
+
+EXPLAIN SELECT * FROM STUDENT ORDER BY AGE,CLASSID  #不加以限制，索引失效（回表操作消耗资源巨大，MySQL优化器选择全表查询）
+
+EXPLAIN SELECT * FROM STUDENT ORDER BY AGE,CLASSID LIMIT 50 #增加limit过滤条件，使用上了索引
+
+EXPLAIN SELECT AGE,CLASSID FROM STUDENT ORDER BY AGE,CLASSID #没有回表操作的话，使用上了索引
+```
+
+
+
+### 5.4.2 order by 顺序错误，索引失效  
+
+
+
+### 5.4.3 filesort算法：双路排序和单路排序
+
+**`双路排序（慢）：`**
+
+> - **MySQL 4.1之前是使用双路排序 ，字面意思就是两次扫描磁盘，最终得到数据， 读取行指针和order by列 ，对他们进行排序，然后扫描已经排序好的列表，按照列表中的值重新从列表中读取对应的数据输出**
+> - **从磁盘取排序字段，在buffer进行排序，再从 磁盘取其他字段 。**
+
+ 
+
+**`单路排序（快）：`**
+
+> ​	**从磁盘读取查询需要的 `所有列` ，按照order by列在buffer对它们进行排序，然后扫描排序后的列表进行输出， 它的效率更快一些，避免了第二次读取数据。并且把随机IO变成了顺序IO，但是它会使用更多的空间， 因为它把每一行都保存在内存中了。**
+>
+> ​	**在sort_buffer中，单路要比多路`占用更多的空间`，所以有可能去除的数据总大小超出了`sort_buffer`的容量，`导致每次只取`sort_buffer`容量大小的数据进行排序（创建tmp文件，多路合并）`，从而多次I/O,这样反而得不偿失**
+>
+> 
+>
+> **`优化策略：`**
+>
+> - **`尝试提高sort_buffer_size：无论那种算法，提高这个参数都会提高效率,这个参数是针对每个进程connection的 1M-8M之间调整，InnoDB存储引擎默认是1048576字节，也就是1MB`**
+>
+> ```sql
+> SHOW VARIABLES LIKE '%SORT_BUFFER_SIZE%'
+> ```
+>
+> | Variable_name           | Value   |
+> | ----------------------- | ------- |
+> | innodb_sort_buffer_size | 1048576 |
+> | myisam_sort_buffer_size | 8388608 |
+> | sort_buffer_size        | 262144  |
+>
+> - **`尝试提高 max_length_for_sort_data`:提高这个参数会增加用改进算法的改率。如果需要返回列的总长度大于`max_length_for_sort_data`，使用双路算法，否则使用单路算法，1024-8192字节之间调整。`（如果设置的过高，数据总容量容易超过sort_buffer_size，容易产生高的磁盘I/O活动和低的处理器使用率）`**
+>
+> ```sql
+> SHOW VARIABLES LIKE '%MAX_LENGTH_FOR_SORT_DATA%' #默认1024字节
+> ```
+>
+> 
+
+
+
+## 5.5 GROUP BY优化
+
+> - **group by 使用索引的原则几乎跟order by一致 ，group by 即使没有过滤条件用到索引，也可以直接使用索引。**
+> - **group by 先排序再分组，遵照索引建的最佳左前缀法则**
+> - **当无法使用索引列，增大 `max_length_for_sort_data` 和 `sort_buffer_size` 参数的设置**
+> - **where效率高于having，能写在where限定的条件就不要写在having中了**
+> - **减少使用order by，和业务沟通能不排序就不排序，或将排序放到程序端去做。Order by、group by、distinct这些语句较为耗费CPU，数据库的CPU资源是极其宝贵的**
+> - **包含了order by、group by、distinct这些查询的语句，where条件过滤出来的结果集请保持在1000行以内，否则SQL会很慢。**
+
+
+
+## 5.6 优化分页查询
+
+
+
+
+
+## 5.7 优先使用覆盖索引
+
+> **`一个索引包含了满足查询结果的数据就叫做覆盖索引`**
+
+
+
+**好处：**
+
+> - **避免Innodb表进行索引的二次查询（回表）**
+> -  **避免Innodb表进行索引的二次查询（回表）**
+
+
+
+## 5.8 索引下推（ICP）
+
+
+
+### 5.8.1 ICP的使用条件
+
+> - **只能用于二级索引(secondary index)**
+> - **explain显示的执行计划中type值（join 类型）为 range 、 ref 、 eq_ref 或者 ref_or_null 。**
+> - **并非全部where条件都可以用ICP筛选，如果where条件的字段不在索引列中，还是要读取整表的记录到server端做where过滤。**
+> - **ICP可以用于MyISAM和InnnoDB存储引擎**
+> - **MySQL 5.6版本的不支持分区表的ICP功能，5.7版本的开始支持**
+> - **当SQL使用覆盖索引时，不支持ICP优化方法**
+
+
+
+## 5.9 其他优化策略
+
+### 5.9.1  EXISTS 和 IN 区分
+
+```sql
+SELECT * FROM A WHERE CC IN (SELECT CC FROM B)#不相关子查询
+SELECT * FROM A WHERE EXISTS (SELECT CC FROM B WHERE B.CC = A.CC) #相关子查询
+```
+
+>- **`当A小于B时用EXISTS，因为EXISTS的实现，相当于外表循环`**
+>
+>```python
+>for i in A
+>	for j in B
+>    	if j.cc == i.cc then... 
+>```
+>
+>- **`当B小于A用IN`**
+>
+>```python
+>for i in B
+>	for j in A
+>    	if j.cc == i.cc then...
+>```
+>
+>**结论：==那个表小就用哪个表驱动，A表小就用 EXISTS ，B表小就用 IN==**
+
+
+
+### 5.9.2 COUNT(*)、COUNT(1)、COUNT(具体字段)效率
+
+> - **`COUNT(*)`与`COUNT(1)`本质上没有区别**
+> - **如果时`MyISAM`存储引擎，`统计数据表的行数只需要O(1)的复杂度`，因为每张`MyISAM`的数据表都有一个meta信息存储了`row_count`值，而一致性则由表级锁来保证**
+> - **如果时`InnoDB`存储引擎，因为`InnoDB`支持事务，采用`行级锁和MVCC机制`，无法像`MyISAM`一样去维护一个`row_count`变量，`因此需要扫描全表，是O(n)的复杂度，采用循环计数来完成统计`**
+> - **在`InnoDB`中，如果采用COUNT(具体字段)来统计，要尽量采用二级索引，因为主键采用的是聚簇索引，聚簇索引包含的信息很多，明显会大于二级索引。对于`COUNT(1)`和`COUNT(*)`来说，系统会自动选择占用空间更小的二级索引来统计。如果有多个二级索引，会使用`key_len`小的二级索引进行扫描，当没有二级索引的时候，才会采用主键索引来进行统计**
+
+
+
+
+
+### 5.9.3 多使用`COMMIT`
+
+> **在程序中多使用COMMIT，这样程序性能得到提高，需求也会因为COMMIT所释放的资源而减少**
+
+
+
+
+
+# 六、数据库的设计规范
+
+
+
+# 七、数据库其他调优策略
+
+
+
+# 八、事务
+
+
+
+# 九、锁
 
 
 
