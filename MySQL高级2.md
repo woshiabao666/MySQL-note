@@ -2153,13 +2153,67 @@ SELECT * FROM A WHERE EXISTS (SELECT CC FROM B WHERE B.CC = A.CC) #相关子查�
 
 
 
+### 8.4.1 查看MySQL事务级别
+
+```sql
+# 查看隔离级别，MySQL 5.7.20的版本之前： 
+SHOW VARIABLES LIKE 'tx_isolation';
+
+# 查看隔离级别，MySQL 5.7.20的版本及之后： 
+SHOW VARIABLES LIKE 'transaction_isolation';
+
+# 或者不同MySQL版本中都可以使用的： 
+SELECT @@transaction_isolation;
+```
 
 
 
+### 8.4.2 如何设置事务的隔离级别
+
+```sql
+SET [GLOBAL|SESSION] TRANSACTION ISOLATION LEVEL = '隔离级别'; 
+#其中，隔离级别格式： 
+> READ UNCOMMITTED 
+> READ COMMITTED 
+> REPEATABLE READ 
+> SERIALIZABLE
+```
+
+**或者：**
+
+```sql
+SET [GLOBAL|SESSION] TRANSACTION_ISOLATION = '隔离级别' 
+#其中，隔离级别格式： 
+> READ-UNCOMMITTED 
+> READ-COMMITTED 
+> REPEATABLE-READ 
+> SERIALIZABLE
+```
+
+**关于设置时使用GLOBAL或SESSION的影响：**
+
+- **`使用 GLOBAL 关键字（在全局范围影响）：`**
+  - **当前已经存在的会话无效**
+  - **只对执行完该语句之后产生的会话起作用**
+
+```sql
+SET GLOBAL TRANSACTION ISOLATION LEVEL SERIALIZABLE; 
+#或
+SET GLOBAL TRANSACTION_ISOLATION = 'SERIALIZABLE';
+```
 
 
 
+- **使用 SESSION 关键字（在会话范围影响）：**
+  - **对当前会话的所有后续的事务有效**
+  - **如果在事务之间执行，则对后续的事务有效**
+  - **该语句可以在已经开启的事务中间执行，但不会影响当前正在执行的事务**
 
+```sql
+SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE; 
+#或
+SET SESSION TRANSACTION_ISOLATION = 'SERIALIZABLE';
+```
 
 
 
