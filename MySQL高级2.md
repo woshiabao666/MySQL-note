@@ -2091,7 +2091,7 @@ SELECT * FROM A WHERE EXISTS (SELECT CC FROM B WHERE B.CC = A.CC) #相关子查�
 | 5            |                                                              | `update student set name = '李四' where studentno = 1` |
 | 6            | `select * from student where studentno = 1`(**如果读到列name的值为'李四'，则意味着发生了不可重复读**) |                                                        |
 
-### 8.3.4 数据并发问题：幻读（'Phantom'）
+### 8.3.4 数据并发问题：幻读（`Phantom`）
 
 > ​	**对于两个事务Session A、Session B, Session A 从一个表中 读取 了一个字段, 然后 Session B 在该表中 `插入` 了一些新的行。 之后, 如果 Session A `再次读取` 同一个表, 就会多出几行。那就意味着发生了幻读。**
 
@@ -2114,25 +2114,42 @@ SELECT * FROM A WHERE EXISTS (SELECT CC FROM B WHERE B.CC = A.CC) #相关子查�
 
 
 
+- **`READ UNCOMMITTED:读未提交`**
+
+> ​	**读未提交，在该隔离级别，所有事务都可以看到其他未提交事务的执行结果。`不能避免脏读、不可重复读、幻读`**
 
 
 
+- **`READ COMMITTED:读已提交`(`Oracle默认事务等级`)**
+
+> ​	**它满足了隔离的简单定义：一个事务只能看见已经提交事务所做的改变。这是大多数数据库系统的默认隔离级别（但不是MySQL默认的）。`可以避免脏读`，但不可重复读、幻读问题仍然存在**
 
 
 
+- **`REPEATABLE READ:可重复读`（`MySQL默认事务等级`）**
+
+> ​	**事务A在读到一条数据之后，此时事务B对该数据进行了修改并提交，那么事务A再读该数据，读到的还是原来的内容。`可以避免脏读、不可重复读`，但幻读问题仍然存在。这是MySQL的默认隔离级别**
 
 
 
+- **`SERIALIZABLE:可串行化`**
+
+> ​	**确保事务可以从一个表中读取相同的行。在这个事务持续期间，禁止其他事务对该表执行插入、更新和删除操作。`所有的并发问题都可以避免`，但性能十分低下。能避免脏读、不可重复读和幻读**
 
 
 
+| 隔离级别                        | 脏读可能性 | 不可重复读可能性 | 幻读可能性 | 加锁读 |
+| ------------------------------- | ---------- | ---------------- | ---------- | ------ |
+| **`READ UNCOMMITTED:读未提交`** | YES        | YES              | YES        | NO     |
+| **`READ COMMITTED:读已提交`**   | NO         | YES              | YES        | NO     |
+| **`REPEATABLE READ:可重复读`**  | NO         | NO               | YES        | NO     |
+| **`SERIALIZABLE:可串行化`**     | NO         | NO               | NO         | YES    |
+
+## 8.4 MySQL支持的四种级别
 
 
 
-
-
-
-
+> ​	**首先，Oracle只支持`READ COMMITTED:读已提交`和`SERIALIZABLE:可串行化`；MySQL虽然支持4种隔离级别，但是与SQL标准里中所规定的各级隔离级别允许发生的问题有所出入**
 
 
 
