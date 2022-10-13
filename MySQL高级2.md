@@ -2238,7 +2238,7 @@ SET SESSION TRANSACTION_ISOLATION = 'SERIALIZABLE';
 
 
 
-![](F:\mysql笔记\MySQL-note\pic\QQ截图20221013162535.png)
+![](E:\阶段性资料\笔记\pic\QQ截图20221013162535.png)
 
 ## 9.1 redo 日志
 
@@ -2290,7 +2290,7 @@ SET SESSION TRANSACTION_ISOLATION = 'SERIALIZABLE';
 
 
 
-![](F:\mysql笔记\MySQL-note\pic\QQ截图20221013164455.png)
+![](E:\阶段性资料\笔记\pic\QQ截图20221013164455.png)
 
 
 
@@ -2312,17 +2312,33 @@ SHOW VARIABLES LIKE '%INNODB_LOG_BUFFER_SIZE%'
 
 
 
+### 9.1.4 redo日志的运作流程
+
+**以更新事务为例，redo log运转过程：**
+
+![](E:\阶段性资料\笔记\pic\QQ截图20221013210303.png)
+
+> **第1步：`先将原始数据从磁盘中读入内存中来，修改数据的内存拷贝`** 
+>
+> **第2步：`生成一条重做日志并写入redo log buffer，记录的是数据被修改后的值`** 
+>
+> **第3步：`当事务commit时，将redo log buffer中的内容刷新到 redo log file，对 redo log file采用追加写的方式`** 
+>
+> **第4步：`定期将内存中修改的数据刷新到磁盘中`**
+>
+> 
+>
+> **==Write-Ahead Log(预先日志持久化)==:在持久化一个数据页之前，先将内存中相应的日志页持久化**
 
 
 
+### 9.1.5 redo日志的刷盘策略
+
+> **redo log的写入并不是直接写入磁盘的，InnoDB引擎会在写redo log的时候先写redo log buffer，之后以`一定的频率`刷入到真正的redo log file中**
+
+![](E:\阶段性资料\笔记\pic\QQ截图20221013210954.png)
 
 
 
-
-
-
-
-
-
-
-
+> ​	**注意，redo log buffer刷盘到redo log file的过程并不是真正的刷到磁盘中去，只是刷入到 `文件系统缓存 （page cache）`中去（这是现代操作系统为了提高文件写入效率做的一个优化），`真正的写入会交给系统自己来决定（比如page cache足够大了）`。那么对于InnoDB来说就存在一个问题，如果交给系统来同**
+> **步，同样如果系统宕机，那么数据也丢失了（虽然整个系统宕机的概率还是比较小的）。针对这种情况，InnoDB给出 `innodb_flush_log_at_trx_commit` 参数，该参数控制 commit提交事务时，如何将 redo log buffer 中的日志刷新到 redo log file 中。它支持三种策略：**
