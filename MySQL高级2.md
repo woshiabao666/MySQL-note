@@ -2359,7 +2359,7 @@ SHOW VARIABLES LIKE '%innodb_flush_log_at_trx_commit%'
 
 - **`innodb_flush_log_at_trx_commit = 1`**
 
-![](F:\mysql笔记\MySQL-note\pic\QQ截图20221014145324.png)
+![](E:\阶段性资料\笔记\pic\QQ截图20221014145324.png)
 
 
 
@@ -2367,7 +2367,7 @@ SHOW VARIABLES LIKE '%innodb_flush_log_at_trx_commit%'
 
 - **`innodb_flush_log_at_trx_commit = 2`**
 
-![](F:\mysql笔记\MySQL-note\pic\QQ截图20221014145423.png)
+![](E:\阶段性资料\笔记\pic\QQ截图20221014145423.png)
 
 
 
@@ -2377,7 +2377,7 @@ SHOW VARIABLES LIKE '%innodb_flush_log_at_trx_commit%'
 
 
 
-![](F:\mysql笔记\MySQL-note\pic\QQ截图20221014145517.png)
+![](E:\阶段性资料\笔记\pic\QQ截图20221014145517.png)
 
 
 
@@ -2412,6 +2412,28 @@ SHOW VARIABLES LIKE '%innodb_flush_log_at_trx_commit%'
 
 
 
+### 9.2.2 Undo日志的作用
+
+> - **作用1：回滚数据**
+>
+> > **undo日志是`逻辑日志`，因此只是将数据库逻辑恢复到原来的样子。所有修改都被逻辑地取消了，但是数据结构和页本身在回滚之后可能大不相同。**
+>
+> - **作用2：MVCC**
+>
+> > **当用户读取一行记录时，若该记录已经被其他事物占用，当前事务可以通过undo读取之前地行版本信息，以此实现非锁定读取**
+
+
+
+### 9.2.3 undo的存储结构
+
+> ​	**InnoDB对undo log的管理采用段的方式，也就是 `回滚段（rollback segment）` 。每个回滚段记录了`1024` 个 `undo log segment` ，而在每个`undo log segment`段中进行 `undo页` 的申请**
+>
+> - **在 `InnoDB1.1版本之前` （不包括1.1版本），只有一个rollback segment，因此支持同时在线的事务限制为 1024 。虽然对绝大多数的应用来说都已经够用。**
+> - **从1.1版本开始InnoDB支持最大 `128个rollback segment` ，故其支持同时在线的事务限制提高到了 `128*1024`** 
+>
+> ```sql
+> show variables like '%innodb_undo_logs%'
+> ```
 
 
 
@@ -2419,12 +2441,29 @@ SHOW VARIABLES LIKE '%innodb_flush_log_at_trx_commit%'
 
 
 
+# 十、锁
+
+
+
+## 10.1  MySQL并发事务访问相同记录
+
+
+
+### 10.1.1 读-读情况
 
 
 
 
 
 
+
+### 10.1.2  写-写情况
+
+
+
+
+
+### 10.1.3 读-写或写-读情况
 
 
 
