@@ -2966,7 +2966,7 @@ Flush tables with read lock
 >
 > ​	**基于如上两个信息可以绘制`wait-for graph`等待图：**
 >
-> ![](F:\mysql笔记\MySQL-note\pic\QQ截图20221020160943.png)
+> ![](E:\阶段性资料\笔记\pic\QQ截图20221020160943.png)
 >
 > 
 >
@@ -3002,7 +3002,7 @@ Flush tables with read lock
 
 **`InnoDB`存储引擎的`锁结构`:**
 
-![](F:\mysql笔记\MySQL-note\pic\QQ截图20221021092844.png)
+![](E:\阶段性资料\笔记\pic\QQ截图20221021092844.png)
 
 
 
@@ -3032,7 +3032,7 @@ Flush tables with read lock
 >
 > > ​	**这是一个32位的数，被分成了 `lock_mode` 、 `lock_type` 和 `rec_lock_type` 三个部分**
 > >
-> > ![](F:\mysql笔记\MySQL-note\pic\QQ截图20221021095146.png)
+> > ![](E:\阶段性资料\笔记\pic\QQ截图20221021095146.png)
 > >
 > > 
 > >
@@ -3165,7 +3165,7 @@ Flush tables with read lock
 
 
 
-![](F:\mysql笔记\MySQL-note\pic\QQ截图20221021135842.png)
+![](E:\阶段性资料\笔记\pic\QQ截图20221021135842.png)
 
 
 
@@ -3190,7 +3190,7 @@ Flush tables with read lock
 
 ​	**每次对记录进行改动，都会记录一条`undo`日志，每条undo日志也都有一个 `roll_pointer` 属性（ `INSERT `操作对应的undo日志没有该属性，因为该记录并没有更早的版本），可以将这些 `undo日志`都连起来，串成一个链表：**
 
-![](F:\mysql笔记\MySQL-note\pic\QQ截图20221021141059.png)
+![](E:\阶段性资料\笔记\pic\QQ截图20221021141059.png)
 
 
 
@@ -3226,7 +3226,7 @@ Flush tables with read lock
 >
 > 
 >
-> **2.`trx_ids` ：表示在生成ReadView时当前系统中活跃的读写事务的 事务id列表**
+> **2.`trx_ids` ：表示在生成ReadView时当前系统中活跃的读写事务的 `事务id列表`**
 >
 > **3.`up_limit_id` :活跃的事务中最小的事务 ID**
 >
@@ -3236,27 +3236,38 @@ Flush tables with read lock
 
 
 
-![](F:\mysql笔记\MySQL-note\pic\QQ截图20221024181111.png)
+![](E:\阶段性资料\笔记\pic\QQ截图20221024181111.png)
 
 
 
 ### 11.4.2 ReadView的规则
 
-- **如果被访问版本的`trx_id`属性值与ReadView中的 `creator_trx_id` 值相同，意味着当前事务在访问它自己修改过的记录，所以该版本可以被当前事务访问**
+- **如果被访问版本的`trx_id`属性值与ReadView中的 `creator_trx_id` 值`相同`，意味着当前事务在访问它自己修改过的记录，所以该版本`可以`被当前事务访问**
 
-- **如果被访问版本的`trx_id`属性值小于ReadView中的 `up_limit_id` 值，表明生成该版本的事务在当前事务生成`ReadView`前已经提交，所以该版本可以被当前事务访问**
+- **如果被访问版本的`trx_id`属性值`小于`ReadView中的 `up_limit_id` 值，表明生成该版本的事务在当前事务生成`ReadView`前已经提交，所以该版本`可以`被当前事务访问**
 
-- **如果被访问版本的`trx_id`属性值大于或等于`ReadView`中的 `low_limit_id` 值，表明生成该版本的事务在当前事务生成`ReadView`后才开启，所以该版本不可以被当前事务访问**
+- **如果被访问版本的`trx_id`属性值`大于`或等于`ReadView`中的 `low_limit_id` 值，表明生成该版本的事务在当前事务生成`ReadView`后才开启，所以该版本`不可以`被当前事务访问**
 
+- **如果被访问版本的`trx_id`属性值在ReadView的 `up_limit_id` 和 `low_limit_id` `之间`，那就需要判断一下trx_id属性值是不是在 `trx_ids` 列表中**
+
+  - **`如果在`，说明创建ReadView时生成该版本的事务还是活跃的，该版本`不可以`被访问**
+  - **`如果不在`，说明创建ReadView时生成该版本的事务已经被提交，该版本`可以`被访问**
+  
+  
+  
   
 
-  
+### 11.4.3 MVCC整体操作流程
 
-  
+**1.首先获取事务自己的版本号，也就是事务 ID**
 
+**2.获取 ReadView**
 
+**3.查询得到的数据，然后与 ReadView 中的事务版本号进行比较**
 
+**4.如果不符合 ReadView 规则，就需要从 Undo Log 中获取历史快照**
 
+**5.最后返回符合规则的数据**
 
 
 
