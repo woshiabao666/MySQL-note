@@ -3465,6 +3465,9 @@ Flush tables with read lock
 >
 > - **然后再到刚才使用 `REPEATABLE READ` 隔离级别的事务中继续查找这个 `id `为 `1 `的记录**
 >   - **==步骤1==：当前事务隔离级别是`REPEATABLE READ`，而之前执行`SELECT1`的时候已经产生`ReadView`了，所以现在会复用之前的`ReadView`，之前的`ReadView`的`trx_ids`列表内容就是`[10,20]`，`up_limit_id`为`10`，`low_limit_id`为`21`，`creator_trx_id`为`0`**
+>   - **==步骤2==：下一个版本`name`的内容是`钱七`，该版本的`trx_id`的值为`20`，也在`trx_ids`列表中，所以也`不符合要求`，继续跳向下一个版本**
+>   - **==步骤3==：下一个版本的`name`是`王五`，该版本的`trx_id`为`10`，在`trx_ids`的列表中，所以该版本也`不符合要求`，同样`name`为`李四`的版本`也不符合要求`，继续跳下一个版本**
+>   - **==步骤4==：该版本的`name`内容是`张三`，版本`trx_id`为`80`，小于`ReadView`的`up_limit_id`，所以符合要求**
 >
 > ```sql
 > # 使用REPEATABLE READ隔离级别的事务
