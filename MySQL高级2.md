@@ -3248,7 +3248,7 @@ Flush tables with read lock
 
 - **如果被访问版本的`trx_id`属性值`大于`或等于`ReadView`中的 `low_limit_id` 值，表明生成该版本的事务在当前事务生成`ReadView`后才开启，所以该版本`不可以`被当前事务访问**
 
-- **如果被访问版本的`trx_id`属性值在ReadView的 `up_limit_id` 和 `low_limit_id` `之间`，那就需要判断一下trx_id属性值是不是在 `trx_ids` 列表中**
+- **如果被访问版本的`trx_id`属性值在ReadView的 `up_limit_id` 和 `low_limit_id` `之间`，那就需要判断一下`trx_id`属性值是不是在 `trx_ids` 列表中**
 
   - **`如果在`，说明创建ReadView时生成该版本的事务还是活跃的，该版本`不可以`被访问**
   - **`如果不在`，说明创建ReadView时生成该版本的事务已经被提交，该版本`可以`被访问**
@@ -3259,15 +3259,248 @@ Flush tables with read lock
 
 ### 11.4.3 MVCC整体操作流程
 
-**1.首先获取事务自己的版本号，也就是事务 ID**
+**1.`首先获取事务自己的版本号，也就是事务 ID`**
 
-**2.获取 ReadView**
+**2.`获取 ReadView`**
 
-**3.查询得到的数据，然后与 ReadView 中的事务版本号进行比较**
+**3.`查询得到的数据，然后与 ReadView 中的事务版本号进行比较`**
 
-**4.如果不符合 ReadView 规则，就需要从 Undo Log 中获取历史快照**
+**4.`如果不符合 ReadView 规则，就需要从 Undo Log 中获取历史快照`**
 
-**5.最后返回符合规则的数据**
+**5.`最后返回符合规则的数据`**
+
+> ​	**如果某个版本的数据对当前事务不可见的话，那就顺着版本链找到下一个版本的数据，继续按照上边的步骤判断可见性，依此类推，知道找到版本链中的最后一个版本。如果最后一个版本也不可见的话，那么就意味着该条记录对该事务完全不可见，查询结果就不包含该记录。**
+>
+> ​	**InnoDB中，MVCC是通过Undo Log + Read View 进行数据读取的，`Undo Log保存了历史快照`，而`Read View规则帮我们判断当前版本数据是否可见。`**
+
+
+
+
+
+### 11.4.4 举例
+
+> ​	**假如现在student表中只有一条`事务id`为`8`的事务插入一条记录**
+>
+> ![](F:\mysql笔记\MySQL-note\pic\QQ截图20221026155928.png)
+
+
+
+**MVCC只能在 `READ COMMITTED` 与 `REPEATABLE READ`两个隔离级别下工作:**
+
+
+
+
+
+**==1.READ COMMITTED隔离级别下：==**
+
+> **==READ COMMITTED ：每次读取数据前都生成一个ReadView==**
+>
+> **现在有两个 `事务id` 分别为 `10` 、 `20` 的事务在执行：**
+>
+> ```sql
+> # Transaction 10
+> BEGIN;
+> UPDATE student SET name="李四" WHERE id=1;
+> UPDATE student SET name="王五" WHERE id=1;
+> # Transaction 20
+> BEGIN;
+> # 更新了一些别的表的记录
+> ...
+> ```
+>
+> - **此刻，表student 中 `id` 为 `1` 的记录得到的版本链表如下所示：**
+>
+> ![](F:\mysql笔记\MySQL-note\pic\QQ截图20221026160548.png)
+>
+> 
+>
+> - **假设现在有一个使用 `READ COMMITTED` 隔离级别的事务开始执行：**
+>   - **==步骤1==：在执行`SELECT 1`的时候会生成一个`READ VIEW`这个`READ VIEW`的`trx_ids`列表的内容就是`[10,20]`，`up_limit_id`为`10`,`low_limit_id`为`21`，`creator_trx_id`为`0`**
+>   - **==步骤2==：从版本链中挑选可见的记录，从图中看出，最新版本的列`name`的内容是`王五`，该版本的`trx_id`值为`10`，在`trx_ids`列表内，所以不符合可见性要求，根据`roll_pointer`跳到下一个版本**
+>   - **==步骤3==：下一个版本的列`name`是`李四`，该版本的`trx_id`的值也为`10`，也在`trx_ids`列表内，所以也不符合要求，继续跳到下一版本**
+>   - **==步骤4==：下一个版本的`name`是张三，该版本的`trx_id`值为`8`，小于`ReadView`的`up_limit_id`，所以这个版本是符合要求的，最后返回的就是这个版本`name`为`张三`的记录**
+>
+> ```sql
+> # 使用READ COMMITTED隔离级别的事务
+> BEGIN;
+> # SELECT1：Transaction 10、20未提交
+> SELECT * FROM student WHERE id = 1; # 得到的列name的值为'张三'
+> ```
+>
+> 
+>
+> - **之后，我们把 `事务id` 为 `10` 的事务提交一下：**
+>
+> ```sql
+> # Transaction 10
+> BEGIN;
+> UPDATE student SET name="李四" WHERE id=1;
+> UPDATE student SET name="王五" WHERE id=1;
+> COMMIT;
+> ```
+>
+> - **然后再到 `事务id` 为 `20` 的事务中更新一下表 student 中` id` 为 `1` 的记录**
+>
+> ```sql
+> # Transaction 20
+> BEGIN;
+> # 更新了一些别的表的记录
+> ...
+> UPDATE student SET name="钱七" WHERE id=1;
+> UPDATE student SET name="宋八" WHERE id=1;
+> ```
+>
+> - **此刻，表student中 `id` 为 `1` 的记录的版本链如图所示：**
+>
+> ![](F:\mysql笔记\MySQL-note\pic\QQ截图20221026161558.png)
+>
+> 
+>
+> - **然后再到刚才使用 `READ COMMITTED` 隔离级别的事务中继续查找这个 `id` 为 `1` 的记录**
+>
+> 
+>
+> ```sql
+> # 使用READ COMMITTED隔离级别的事务
+> 
+> BEGIN;
+> 
+> # SELECT1：Transaction 10、20均未提交
+> 
+> SELECT * FROM student WHERE id = 1; # 得到的列name的值为'张三'
+> 
+> # SELECT2：Transaction 10提交，Transaction 20未提交
+> 
+> SELECT * FROM student WHERE id = 1; # 得到的列name的值为'王五'
+> ```
+>
+> - **==步骤1：==在执行`SELECT`语句时又会单独生成一个`ReadView`，该`ReadView`的`trx_ids`列表的内容就是`[20]`，`up_limit_id`为`20`，`low_limit_id`为`21`，`creator_trx_id`为`0`**
+>
+> - **==步骤2==：从版本链中挑选可见的记录，从图中看出，最新版本的列`name`的内容是`宋八`，该版本的`trx_id`值为`20`，在`trx_ids`列表内，所以`不符合可见性要求`，根据`roll_pointer`跳到下一版本**
+>
+> - **==步骤3==：该版本的`name`内容是`钱七`，该版本的`trx_id`值为`20`，也在`trx_ids`列表内，所以也不符合，继续跳到下一个版本**
+>
+> - **==步骤4==：该版本的`name`内容是`王五`，`trx_id`值为`10`，小于`ReadView`中的`up_limit_id`，所以这个版本是`符合要求`的**
+>
+>   **以此类推，如果`事务id`为`20`的记录也`提交了`，再次使用`READ COMMITED`隔离级别的食物中查询表student中`id`为`1`的记录，得到的结果就是`宋八`**
+
+
+
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+**==2.REPEATABLE READ隔离级别下==**
+
+> ​	**使用 `REPEATABLE READ` 隔离级别的事务来说，==只会在第一次执行查询语句时生成一个 `ReadView`== ，之后的查询就不会重复生成了**
+>
+> 
+>
+> - **现在有两个 `事务id` 分别为 `10` 、 `20` 的事务在执行**
+>
+> ```sql
+> # Transaction 10
+> BEGIN;
+> UPDATE student SET name="李四" WHERE id=1;
+> UPDATE student SET name="王五" WHERE id=1;
+> # Transaction 20
+> BEGIN;
+> # 更新了一些别的表的记录
+> ...
+> ```
+>
+> - **此刻，表student 中 `id 为 `1` 的记录得到的版本链表如下所示**
+>
+> ![](F:\mysql笔记\MySQL-note\pic\QQ截图20221026162303.png)
+>
+> 
+>
+> - **假设现在有一个使用 `REPEATABLE READ` 隔离级别的事务开始执行：**
+>   - **==步骤1==：在执行`SELECT 1`的时候会生成一个`READ VIEW`这个`READ VIEW`的`trx_ids`列表的内容就是`[10,20]`，`up_limit_id`为`10`,`low_limit_id`为`21`，`creator_trx_id`为`0`**
+>   - **==步骤2==：从版本链中挑选可见的记录，从图中看出，最新版本的列`name`的内容是`王五`，该版本的`trx_id`值为`10`，在`trx_ids`列表内，所以不符合可见性要求，根据`roll_pointer`跳到下一个版本**
+>   - **==步骤3==：下一个版本的列`name`是`李四`，该版本的`trx_id`的值也为`10`，也在`trx_ids`列表内，所以也不符合要求，继续跳到下一版本**
+>   - **==步骤4==：下一个版本的`name`是张三，该版本的`trx_id`值为`8`，小于`ReadView`的`up_limit_id`，所以这个版本是符合要求的，最后返回的就是这个版本`name`为`张三`的记录**
+>
+> ```sql
+> # 使用REPEATABLE READ隔离级别的事务
+> BEGIN;
+> # SELECT1：Transaction 10、20未提交
+> SELECT * FROM student WHERE id = 1; # 得到的列name的值为'张三'
+> ```
+>
+> - **我们把 `事务id` 为 `10` 的事务`提交`一下：**
+>
+> ```sql
+> # Transaction 10
+> BEGIN;
+> UPDATE student SET name="李四" WHERE id=1;
+> UPDATE student SET name="王五" WHERE id=1;
+> COMMIT;
+> ```
+>
+> - **然后再到 事务id 为 `20` 的事务中`更新`一下表 student 中 id 为 `1` 的记录**
+>
+> ```sql
+> # Transaction 20
+> BEGIN;
+> # 更新了一些别的表的记录
+> ...
+> UPDATE student SET name="钱七" WHERE id=1;
+> UPDATE student SET name="宋八" WHERE id=1;
+> ```
+>
+> - **此刻，表student中 id 为 `1` 的记录的版本链如图所示：**
+>
+> ![](F:\mysql笔记\MySQL-note\pic\QQ截图20221026162601.png)
+>
+> 
+>
+> - **然后再到刚才使用 `REPEATABLE READ` 隔离级别的事务中继续查找这个 `id `为 `1 `的记录**
+>   - **==步骤1==：当前事务隔离级别是`REPEATABLE READ`，而之前执行`SELECT1`的时候已经产生`ReadView`了，所以现在会复用之前的`ReadView`，之前的`ReadView`的`trx_ids`列表内容就是`[10,20]`，`up_limit_id`为`10`，`low_limit_id`为`21`，`creator_trx_id`为`0`**
+>
+> ```sql
+> # 使用REPEATABLE READ隔离级别的事务
+> BEGIN;
+> # SELECT1：Transaction 10、20均未提交
+> SELECT * FROM student WHERE id = 1; # 得到的列name的值为'张三'
+> # SELECT2：Transaction 10提交，Transaction 20未提交
+> SELECT * FROM student WHERE id = 1; # 得到的列name的值仍为'张三
+> ```
+>
+> 
+> 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
