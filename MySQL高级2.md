@@ -3281,7 +3281,7 @@ Flush tables with read lock
 
 > ​	**假如现在student表中只有一条`事务id`为`8`的事务插入一条记录**
 >
-> ![](F:\mysql笔记\MySQL-note\pic\QQ截图20221026155928.png)
+> ![](E:\阶段性资料\笔记\pic\QQ截图20221026155928.png)
 
 
 
@@ -3310,7 +3310,7 @@ Flush tables with read lock
 >
 > - **此刻，表student 中 `id` 为 `1` 的记录得到的版本链表如下所示：**
 >
-> ![](F:\mysql笔记\MySQL-note\pic\QQ截图20221026160548.png)
+> ![](E:\阶段性资料\笔记\pic\QQ截图20221026160548.png)
 >
 > 
 >
@@ -3352,7 +3352,7 @@ Flush tables with read lock
 >
 > - **此刻，表student中 `id` 为 `1` 的记录的版本链如图所示：**
 >
-> ![](F:\mysql笔记\MySQL-note\pic\QQ截图20221026161558.png)
+> ![](E:\阶段性资料\笔记\pic\QQ截图20221026161558.png)
 >
 > 
 >
@@ -3419,7 +3419,7 @@ Flush tables with read lock
 >
 > - **此刻，表student 中 `id 为 `1` 的记录得到的版本链表如下所示**
 >
-> ![](F:\mysql笔记\MySQL-note\pic\QQ截图20221026162303.png)
+> ![](E:\阶段性资料\笔记\pic\QQ截图20221026162303.png)
 >
 > 
 >
@@ -3459,7 +3459,7 @@ Flush tables with read lock
 >
 > - **此刻，表student中 id 为 `1` 的记录的版本链如图所示：**
 >
-> ![](F:\mysql笔记\MySQL-note\pic\QQ截图20221026162601.png)
+> ![](E:\阶段性资料\笔记\pic\QQ截图20221026162601.png)
 >
 > 
 >
@@ -3482,6 +3482,12 @@ Flush tables with read lock
 > 
 
 
+
+### 11.4.5 MVCC解决幻读问题
+
+
+
+![image-20221027222626511](pic/image-20221027222626511.png)
 
 
 
